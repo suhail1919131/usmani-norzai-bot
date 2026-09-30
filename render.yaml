@@ -5,4 +5,5 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: python bot.py
     envVars:
-      - fromGroup: usmani-bot-secrets
+      - key: BOT_TOKEN
+        sync: false
