@@ -1,7 +1,10 @@
 import logging
 import re
+import os
+import threading
 import requests
 
+from flask import Flask
 from bs4 import BeautifulSoup
 
 from telegram import (
@@ -25,11 +28,36 @@ from telegram.ext import (
 # تنظیمات
 # =========================================================
 
-BOT_TOKEN = "8858827620:AAFgMrCM-1SySWCEaZfatVzy-M08YAE1z0Y"
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+PORT = int(os.getenv("PORT", "10000"))
 
 TGJU_URL = "https://www.tgju.org/currency"
 
 TIMEOUT = 15
+
+
+# =========================================================
+# Flask برای Render
+# =========================================================
+
+web_app = Flask(__name__)
+
+
+@web_app.route("/")
+def home_page():
+    return "Bot is running!"
+
+
+@web_app.route("/health")
+def health():
+    return "OK"
+
+
+def run_web_server():
+    web_app.run(
+        host="0.0.0.0",
+        port=PORT
+    )
 
 
 # =========================================================
@@ -93,7 +121,10 @@ def clean_number(text):
         .replace(" ", "")
     )
 
-    match = re.search(r"-?\d+(?:\.\d+)?", text)
+    match = re.search(
+        r"-?\d+(?:\.\d+)?",
+        text
+    )
 
     if not match:
         return None
@@ -166,7 +197,6 @@ def get_tgju_rates():
         euro_time = None
         afn_time = None
 
-        # تمام جدول‌ها
         tables = soup.find_all("table")
 
         for table in tables:
@@ -201,7 +231,6 @@ def get_tgju_rates():
 
                 title = cell_texts[0].strip()
 
-                # فقط ردیف‌های مورد نظر
                 if title not in [
                     "دلار",
                     "یورو",
@@ -211,7 +240,6 @@ def get_tgju_rates():
 
                 price_text = cell_texts[1]
 
-                # پیدا کردن اولین عدد داخل سلول قیمت
                 price_match = re.search(
                     r"\d[\d,٬]*",
                     price_text,
@@ -235,7 +263,6 @@ def get_tgju_rates():
 
                 row_time = None
 
-                # پیدا کردن ساعت
                 for text in cell_texts:
 
                     time_match = re.search(
@@ -446,11 +473,9 @@ async def market(
 
         return
 
-    # TGJU نرخ را ریال ایران می‌دهد
     dollar_toman = dollar_irr / 10
     euro_toman = euro_irr / 10
 
-    # یورو به دالر
     euro_usd = euro_irr / dollar_irr
 
     dollar_time = rates["USD_TIME"] or "-"
@@ -746,13 +771,11 @@ async def convert_amount(
 
         return ConversationHandler.END
 
-    # دریافت نرخ
     rates = get_tgju_rates()
 
     usd_irr = rates["USD"]
     eur_irr = rates["EUR"]
 
-    # برای تبدیل‌های ایران
     usd_toman = (
         usd_irr / 10
         if usd_irr
@@ -768,121 +791,67 @@ async def convert_amount(
     result = None
     rate_text = ""
 
-    # -----------------------------------------
-    # USD -> IRR
-    # -----------------------------------------
-
     if source == "USD" and destination == "IRR":
 
         if not usd_toman:
-
             result = None
-
         else:
-
             result = amount * usd_toman
-
             rate_text = (
                 f"1 دالر = {format_number(usd_toman)} تومان"
             )
-
-    # -----------------------------------------
-    # IRR -> USD
-    # -----------------------------------------
 
     elif source == "IRR" and destination == "USD":
 
         if not usd_toman:
-
             result = None
-
         else:
-
             result = amount / usd_toman
-
             rate_text = (
                 f"1 دالر = {format_number(usd_toman)} تومان"
             )
 
-    # -----------------------------------------
-    # EUR -> IRR
-    # -----------------------------------------
-
     elif source == "EUR" and destination == "IRR":
 
         if not eur_toman:
-
             result = None
-
         else:
-
             result = amount * eur_toman
-
             rate_text = (
                 f"1 یورو = {format_number(eur_toman)} تومان"
             )
-
-    # -----------------------------------------
-    # IRR -> EUR
-    # -----------------------------------------
 
     elif source == "IRR" and destination == "EUR":
 
         if not eur_toman:
-
             result = None
-
         else:
-
             result = amount / eur_toman
-
             rate_text = (
                 f"1 یورو = {format_number(eur_toman)} تومان"
             )
 
-    # -----------------------------------------
-    # EUR -> USD
-    # -----------------------------------------
-
     elif source == "EUR" and destination == "USD":
 
         if not usd_irr or not eur_irr:
-
             result = None
-
         else:
-
             rate = eur_irr / usd_irr
-
             result = amount * rate
-
             rate_text = (
                 f"1 یورو = {rate:.4f} دالر"
             )
 
-    # -----------------------------------------
-    # USD -> EUR
-    # -----------------------------------------
-
     elif source == "USD" and destination == "EUR":
 
         if not usd_irr or not eur_irr:
-
             result = None
-
         else:
-
             rate = usd_irr / eur_irr
-
             result = amount * rate
-
             rate_text = (
                 f"1 دالر = {rate:.4f} یورو"
             )
-
-    # -----------------------------------------
-    # AFN
-    # -----------------------------------------
 
     elif source == "AFN" or destination == "AFN":
 
@@ -1128,18 +1097,14 @@ async def manual_commission(
 
         return ConversationHandler.END
 
-    # نسبت یورو به دالر
     euro_to_dollar = euro / dollar
 
-    # تبدیل تومان بر اساس نسبت
     converted = toman * euro_to_dollar
 
-    # کمیسیون
     commission_amount = (
         converted * commission / 100
     )
 
-    # مبلغ نهایی
     final_amount = (
         converted - commission_amount
     )
@@ -1220,6 +1185,11 @@ async def cancel(
 
 def main():
 
+    if not BOT_TOKEN:
+        raise RuntimeError(
+            "BOT_TOKEN environment variable is not set."
+        )
+
     application = (
         Application.builder()
         .token(BOT_TOKEN)
@@ -1227,9 +1197,9 @@ def main():
         .build()
     )
 
-    # -----------------------------
+    # =====================================================
     # تبدیل ارز
-    # -----------------------------
+    # =====================================================
 
     convert_conversation = ConversationHandler(
 
@@ -1276,9 +1246,9 @@ def main():
         allow_reentry=True,
     )
 
-    # -----------------------------
+    # =====================================================
     # محاسبه دستی
-    # -----------------------------
+    # =====================================================
 
     manual_conversation = ConversationHandler(
 
@@ -1335,9 +1305,9 @@ def main():
         allow_reentry=True,
     )
 
-    # -----------------------------
+    # =====================================================
     # Handlerها
-    # -----------------------------
+    # =====================================================
 
     application.add_handler(
         CommandHandler(
@@ -1371,6 +1341,7 @@ def main():
     print()
     print("======================================")
     print("🤖 Bot is running...")
+    print(f"🌐 Web server running on port {PORT}")
     print("======================================")
     print()
 
@@ -1382,4 +1353,10 @@ def main():
 # =========================================================
 
 if __name__ == "__main__":
+
+    threading.Thread(
+        target=run_web_server,
+        daemon=True,
+    ).start()
+
     main()
