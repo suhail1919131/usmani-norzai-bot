@@ -1337,16 +1337,26 @@ def main():
     application.add_handler(
         manual_conversation
     )
+    
+    print("======================================", flush=True)
+    print("🤖 Bot is starting...", flush=True)
+    print(f"🌐 Web server running on port {PORT}", flush=True)
+    print("======================================", flush=True)
 
-    print()
-    print("======================================")
-    print("🤖 Bot is running...")
-    print(f"🌐 Web server running on port {PORT}")
-    print("======================================")
-    print()
+    try:
+        print(">>> BEFORE POLLING <<<", flush=True)
 
-    application.run_polling()
+        application.run_polling(
+            drop_pending_updates=True
+        )
 
+        print(">>> POLLING STOPPED <<<", flush=True)
+
+    except Exception as error:
+        print("======================================", flush=True)
+        print("❌ POLLING ERROR:", repr(error), flush=True)
+        print("======================================", flush=True)
+        raise
 
 # =========================================================
 # شروع
