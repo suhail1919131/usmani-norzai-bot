@@ -28,7 +28,7 @@ from telegram.ext import (
 # تنظیمات
 # =========================================================
 
-BOT_TOKEN = os.getenv("TEST_BOT_TOKEN")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 PORT = int(os.getenv("PORT", "10000"))
 
 TGJU_URL = "https://www.tgju.org/currency"
