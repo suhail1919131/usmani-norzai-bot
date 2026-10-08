@@ -25,8 +25,9 @@ from telegram.ext import (
 # =========================================================
 # تنظیمات
 # =========================================================
-
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+
+TOFAN_URL = "https://t.me/s/TOFAN_HARIRRUD"
 
 TGJU_URL = "https://www.tgju.org/currency"
 
@@ -296,6 +297,127 @@ def get_tgju_rates():
             "AFN_TIME": None,
         }
 
+# =========================================================
+# دریافت نرخ بازار هرات از Tofan Harirud
+# =========================================================
+
+def get_tofan_rates():
+
+    try:
+
+        html = get_html(TOFAN_URL)
+
+        soup = BeautifulSoup(
+            html,
+            "html.parser",
+        )
+
+        today_buy = None
+        today_sell = None
+        today_time = None
+
+        messages = soup.select(
+            ".tgme_widget_message_text"
+        )
+
+        for message in messages:
+
+            text = message.get_text(
+                " ",
+                strip=True,
+            )
+
+            text = normalize_digits(text)
+
+            # فقط نرخ «هرات امروزی»
+            if "هرات امروزی" not in text:
+                continue
+
+            buy_match = re.search(
+                r"(\d[\d,٬]*)\s*خ[ــ\-–—]*رید",
+                text,
+            )
+
+            if buy_match:
+
+                value = (
+                    buy_match.group(1)
+                    .replace(",", "")
+                    .replace("٬", "")
+                )
+
+                try:
+                    today_buy = int(value)
+                except ValueError:
+                    pass
+
+            sell_match = re.search(
+                r"(\d[\d,٬]*)\s*ف[ــ\-–—]*روش",
+                text,
+            )
+
+            if sell_match:
+
+                value = (
+                    sell_match.group(1)
+                    .replace(",", "")
+                    .replace("٬", "")
+                )
+
+                try:
+                    today_sell = int(value)
+                except ValueError:
+                    pass
+
+            parent = message.parent
+
+            if parent:
+
+                date_link = parent.select_one(
+                    ".tgme_widget_message_date"
+                )
+
+                if date_link:
+
+                    time_text = date_link.get_text(
+                        " ",
+                        strip=True,
+                    )
+
+                    time_match = re.search(
+                        r"\d{1,2}:\d{2}",
+                        time_text,
+                    )
+
+                    if time_match:
+                        today_time = time_match.group(0)
+
+        logger.info(
+            "TOFAN -> TODAY BUY=%s SELL=%s TIME=%s",
+            today_buy,
+            today_sell,
+            today_time,
+        )
+
+        return {
+            "TODAY_BUY": today_buy,
+            "TODAY_SELL": today_sell,
+            "TODAY_TIME": today_time,
+        }
+
+    except Exception as error:
+
+        logger.error(
+            "TOFAN ERROR: %s",
+            error,
+        )
+
+        return {
+            "TODAY_BUY": None,
+            "TODAY_SELL": None,
+            "TODAY_TIME": None,
+        }
+
 
 # =========================================================
 # منوی اصلی
@@ -424,44 +546,58 @@ async def market(
     await query.edit_message_text(
         "⏳ در حال دریافت آخرین نرخ بازار..."
     )
+    # دریافت نرخ ایران از TGJU
+    tgju = get_tgju_rates()
 
-    rates = get_tgju_rates()
+    # دریافت نرخ هرات از Tofan Harirud
+    tofan = get_tofan_rates()
 
-    dollar_irr = rates["USD"]
-    euro_irr = rates["EUR"]
+    dollar_irr = tgju["USD"]
+    euro_irr = tgju["EUR"]
 
-    if dollar_irr is None or euro_irr is None:
+    tofan_buy = tofan["TODAY_BUY"]
+    tofan_sell = tofan["TODAY_SELL"]
+    tofan_time = tofan["TODAY_TIME"] or "-"
 
-        await query.edit_message_text(
-            "❌ دریافت نرخ بازار موفق نشد.\n\n"
-            "لطفاً چند لحظه بعد دوباره امتحان کنید.",
-            reply_markup=back_keyboard(),
-        )
+    # نرخ دالر ایران
+    if dollar_irr is not None:
+        dollar_toman = dollar_irr / 10
+    else:
+        dollar_toman = None
 
-        return
+    # یورو به دالر
+    if (
+        dollar_irr is not None
+        and euro_irr is not None
+    ):
+        euro_usd = euro_irr / dollar_irr
+        euro_usd_text = f"{euro_usd:.4f}"
+    else:
+        euro_usd_text = "-"
 
-    dollar_toman = dollar_irr / 10
-
-    euro_usd = euro_irr / dollar_irr
-
-    dollar_time = rates["USD_TIME"] or "-"
-    euro_time = rates["EUR_TIME"] or "-"
+    dollar_time = tgju["USD_TIME"] or "-"
+    euro_time = tgju["EUR_TIME"] or "-"
 
     text = (
         "━━━━━━━━━━━━━━━━━━\n"
         "🏦 نرخ بازار\n"
         "━━━━━━━━━━━━━━━━━━\n\n"
 
-        f"🇺🇸 1 دالر ≈ "
-        f"{format_number(dollar_toman)} تومان\n"
-
-        f"🇪🇺 1 یورو ≈ "
-        f"{euro_usd:.4f} دالر\n\n"
+        "🇦🇫 هرات — دالر\n"
+        f"🔵 خرید: {format_number(tofan_buy)} تومان\n"
+        f"🔴 فروش: {format_number(tofan_sell)} تومان\n"
+        f"🕐 زمان: {tofan_time}\n\n"
 
         "━━━━━━━━━━━━━━━━━━\n"
-        "📡 منبع: TGJU\n"
-        f"🕐 نرخ دالر: {dollar_time}\n"
-        f"🕐 نرخ یورو: {euro_time}\n"
+
+        "🇮🇷 ایران — TGJU\n"
+        f"🇺🇸 1 دالر ≈ {format_number(dollar_toman)} تومان\n"
+        f"🇪🇺 1 یورو ≈ {euro_usd_text} دالر\n\n"
+
+        "━━━━━━━━━━━━━━━━━━\n"
+        "📡 منابع: Tofan Harirud + TGJU\n"
+        f"🕐 دالر ایران: {dollar_time}\n"
+        f"🕐 یورو ایران: {euro_time}\n"
         "━━━━━━━━━━━━━━━━━━"
     )
 
@@ -469,8 +605,6 @@ async def market(
         text,
         reply_markup=back_keyboard(),
     )
-
-
 # =========================================================
 # انتخاب ارز مبدا
 # =========================================================
