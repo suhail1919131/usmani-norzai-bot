@@ -11,9 +11,10 @@ app = Flask(__name__)
 application = create_application()
 
 _initialized = False
-_init_lock = None
+_started = False
 
-# یک Event Loop دائمی برای این نمونه Vercel
+init_lock = threading.Lock()
+
 event_loop = asyncio.new_event_loop()
 
 
@@ -30,16 +31,22 @@ loop_thread = threading.Thread(
 loop_thread.start()
 
 
+async def ensure_application():
+
+    global _initialized, _started
+
+    if not _initialized:
+        await application.initialize()
+        _initialized = True
+
+    if not _started:
+        await application.start()
+        _started = True
+
+
 async def process_telegram_update(data):
-    global _initialized, _init_lock
 
-    if _init_lock is None:
-        _init_lock = asyncio.Lock()
-
-    async with _init_lock:
-        if not _initialized:
-            await application.initialize()
-            _initialized = True
+    await ensure_application()
 
     update = Update.de_json(
         data,
@@ -51,11 +58,13 @@ async def process_telegram_update(data):
 
 @app.route("/", methods=["GET"])
 def home():
+
     return "🏦 Usmani Norzai Bot is running!"
 
 
 @app.route("/health", methods=["GET"])
 def health():
+
     return jsonify({
         "status": "ok"
     })
@@ -63,6 +72,7 @@ def health():
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
+
     data = request.get_json(silent=True)
 
     if not data:
@@ -72,6 +82,7 @@ def webhook():
         }), 400
 
     try:
+
         future = asyncio.run_coroutine_threadsafe(
             process_telegram_update(data),
             event_loop
@@ -84,6 +95,7 @@ def webhook():
         })
 
     except Exception as error:
+
         print(
             "Webhook error:",
             repr(error),
