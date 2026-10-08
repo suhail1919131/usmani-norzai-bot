@@ -1,10 +1,8 @@
 import logging
 import re
 import os
-import threading
-import requests
 
-from flask import Flask
+import requests
 from bs4 import BeautifulSoup
 
 from telegram import (
@@ -29,35 +27,10 @@ from telegram.ext import (
 # =========================================================
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-PORT = int(os.getenv("PORT", "10000"))
 
 TGJU_URL = "https://www.tgju.org/currency"
 
 TIMEOUT = 15
-
-
-# =========================================================
-# Flask برای Render
-# =========================================================
-
-web_app = Flask(__name__)
-
-
-@web_app.route("/")
-def home_page():
-    return "Bot is running!"
-
-
-@web_app.route("/health")
-def health():
-    return "OK"
-
-
-def run_web_server():
-    web_app.run(
-        host="0.0.0.0",
-        port=PORT
-    )
 
 
 # =========================================================
@@ -136,7 +109,6 @@ def clean_number(text):
 
 
 def format_number(number):
-    """نمایش عدد با جداکننده هزارگان"""
 
     if number is None:
         return "-"
@@ -150,8 +122,11 @@ def format_number(number):
     return f"{number:,.2f}"
 
 
+# =========================================================
+# دریافت صفحه اینترنتی
+# =========================================================
+
 def get_html(url):
-    """گرفتن صفحه سایت"""
 
     headers = {
         "User-Agent": (
@@ -357,27 +332,23 @@ def main_keyboard():
 
 
 # =========================================================
-# منوی برگشت
+# دکمه برگشت
 # =========================================================
 
 def back_keyboard():
 
-    keyboard = [
-
+    return InlineKeyboardMarkup([
         [
             InlineKeyboardButton(
                 "🏠 منوی اصلی",
                 callback_data="home",
             )
         ]
-
-    ]
-
-    return InlineKeyboardMarkup(keyboard)
+    ])
 
 
 # =========================================================
-# شروع ربات
+# /start
 # =========================================================
 
 async def start(
@@ -410,7 +381,7 @@ async def start(
 
 
 # =========================================================
-# منوی اصلی از دکمه
+# خانه
 # =========================================================
 
 async def home(
@@ -424,7 +395,7 @@ async def home(
 
     text = (
         "━━━━━━━━━━━━━━━━━━\n"
-        "🏦 صرافی هرات\n"
+        "🏦 صرافی عثمانی نورزایی\n"
         "💱 نرخ و محاسبه ارز\n"
         "━━━━━━━━━━━━━━━━━━\n\n"
         "لطفاً یکی از گزینه‌ها را انتخاب کنید 👇\n"
@@ -451,7 +422,7 @@ async def market(
     await query.answer()
 
     await query.edit_message_text(
-        "⏳ در حال دریافت آخرین نرخ بازار...",
+        "⏳ در حال دریافت آخرین نرخ بازار..."
     )
 
     rates = get_tgju_rates()
@@ -461,20 +432,15 @@ async def market(
 
     if dollar_irr is None or euro_irr is None:
 
-        text = (
-            "❌ دریافت نرخ بازار موفق نشد.\n\n"
-            "لطفاً چند لحظه بعد دوباره امتحان کنید."
-        )
-
         await query.edit_message_text(
-            text,
+            "❌ دریافت نرخ بازار موفق نشد.\n\n"
+            "لطفاً چند لحظه بعد دوباره امتحان کنید.",
             reply_markup=back_keyboard(),
         )
 
         return
 
     dollar_toman = dollar_irr / 10
-    euro_toman = euro_irr / 10
 
     euro_usd = euro_irr / dollar_irr
 
@@ -506,7 +472,7 @@ async def market(
 
 
 # =========================================================
-# منوی تبدیل ارز
+# انتخاب ارز مبدا
 # =========================================================
 
 def conversion_from_keyboard():
@@ -546,6 +512,10 @@ def conversion_from_keyboard():
 
     return InlineKeyboardMarkup(keyboard)
 
+
+# =========================================================
+# انتخاب ارز مقصد
+# =========================================================
 
 def conversion_to_keyboard():
 
@@ -617,7 +587,7 @@ async def convert_start(
 
 
 # =========================================================
-# انتخاب ارز اول و دوم
+# انتخاب مبدا / مقصد
 # =========================================================
 
 async def conversion_callback(
@@ -631,6 +601,13 @@ async def conversion_callback(
 
     data = query.data
 
+    names = {
+        "USD": "🇺🇸 دالر",
+        "EUR": "🇪🇺 یورو",
+        "AFN": "🇦🇫 افغانی",
+        "IRR": "🇮🇷 تومان",
+    }
+
     if data.startswith("from_"):
 
         source = data.replace(
@@ -639,13 +616,6 @@ async def conversion_callback(
         )
 
         context.user_data["source"] = source
-
-        names = {
-            "USD": "🇺🇸 دالر",
-            "EUR": "🇪🇺 یورو",
-            "AFN": "🇦🇫 افغانی",
-            "IRR": "🇮🇷 تومان",
-        }
 
         source_name = names.get(
             source,
@@ -698,13 +668,6 @@ async def conversion_callback(
 
         context.user_data["destination"] = destination
 
-        names = {
-            "USD": "🇺🇸 دالر",
-            "EUR": "🇪🇺 یورو",
-            "AFN": "🇦🇫 افغانی",
-            "IRR": "🇮🇷 تومان",
-        }
-
         source_name = names.get(
             source,
             source,
@@ -724,9 +687,7 @@ async def conversion_callback(
             "🔢 لطفاً مقدار را وارد کنید:"
         )
 
-        await query.edit_message_text(
-            text
-        )
+        await query.edit_message_text(text)
 
         return CONVERT_AMOUNT
 
@@ -742,9 +703,9 @@ async def convert_amount(
     context: ContextTypes.DEFAULT_TYPE,
 ):
 
-    text = update.message.text.strip()
-
-    amount = clean_number(text)
+    amount = clean_number(
+        update.message.text.strip()
+    )
 
     if amount is None or amount <= 0:
 
@@ -776,26 +737,15 @@ async def convert_amount(
     usd_irr = rates["USD"]
     eur_irr = rates["EUR"]
 
-    usd_toman = (
-        usd_irr / 10
-        if usd_irr
-        else None
-    )
-
-    eur_toman = (
-        eur_irr / 10
-        if eur_irr
-        else None
-    )
+    usd_toman = usd_irr / 10 if usd_irr else None
+    eur_toman = eur_irr / 10 if eur_irr else None
 
     result = None
     rate_text = ""
 
     if source == "USD" and destination == "IRR":
 
-        if not usd_toman:
-            result = None
-        else:
+        if usd_toman:
             result = amount * usd_toman
             rate_text = (
                 f"1 دالر = {format_number(usd_toman)} تومان"
@@ -803,9 +753,7 @@ async def convert_amount(
 
     elif source == "IRR" and destination == "USD":
 
-        if not usd_toman:
-            result = None
-        else:
+        if usd_toman:
             result = amount / usd_toman
             rate_text = (
                 f"1 دالر = {format_number(usd_toman)} تومان"
@@ -813,9 +761,7 @@ async def convert_amount(
 
     elif source == "EUR" and destination == "IRR":
 
-        if not eur_toman:
-            result = None
-        else:
+        if eur_toman:
             result = amount * eur_toman
             rate_text = (
                 f"1 یورو = {format_number(eur_toman)} تومان"
@@ -823,9 +769,7 @@ async def convert_amount(
 
     elif source == "IRR" and destination == "EUR":
 
-        if not eur_toman:
-            result = None
-        else:
+        if eur_toman:
             result = amount / eur_toman
             rate_text = (
                 f"1 یورو = {format_number(eur_toman)} تومان"
@@ -833,22 +777,24 @@ async def convert_amount(
 
     elif source == "EUR" and destination == "USD":
 
-        if not usd_irr or not eur_irr:
-            result = None
-        else:
+        if usd_irr and eur_irr:
+
             rate = eur_irr / usd_irr
+
             result = amount * rate
+
             rate_text = (
                 f"1 یورو = {rate:.4f} دالر"
             )
 
     elif source == "USD" and destination == "EUR":
 
-        if not usd_irr or not eur_irr:
-            result = None
-        else:
+        if usd_irr and eur_irr:
+
             rate = usd_irr / eur_irr
+
             result = amount * rate
+
             rate_text = (
                 f"1 دالر = {rate:.4f} یورو"
             )
@@ -864,10 +810,6 @@ async def convert_amount(
         )
 
         return ConversationHandler.END
-
-    else:
-
-        result = None
 
     if result is None:
 
@@ -886,15 +828,8 @@ async def convert_amount(
         "IRR": "🇮🇷 تومان",
     }
 
-    source_name = names.get(
-        source,
-        source,
-    )
-
-    destination_name = names.get(
-        destination,
-        destination,
-    )
+    source_name = names.get(source, source)
+    destination_name = names.get(destination, destination)
 
     usd_time = rates["USD_TIME"] or "-"
     eur_time = rates["EUR_TIME"] or "-"
@@ -903,12 +838,16 @@ async def convert_amount(
         "━━━━━━━━━━━━━━━━━━\n"
         "💱 نتیجه تبدیل\n"
         "━━━━━━━━━━━━━━━━━━\n\n"
+
         f"🔹 مقدار: {format_number(amount)}\n"
         f"🔹 از: {source_name}\n"
         f"🔹 به: {destination_name}\n\n"
+
         f"💰 نتیجه:\n"
         f"{format_number(result)}\n\n"
+
         f"📊 {rate_text}\n\n"
+
         "━━━━━━━━━━━━━━━━━━\n"
         "📡 منبع: TGJU\n"
         f"🕐 دالر: {usd_time}\n"
@@ -936,9 +875,7 @@ async def convert_amount(
 
     await update.message.reply_text(
         result_text,
-        reply_markup=InlineKeyboardMarkup(
-            keyboard
-        ),
+        reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
     return ConversationHandler.END
@@ -967,9 +904,7 @@ async def manual_start(
         "مثال: 74"
     )
 
-    await query.edit_message_text(
-        text
-    )
+    await query.edit_message_text(text)
 
     return MANUAL_EURO
 
@@ -1076,17 +1011,17 @@ async def manual_commission(
 
         return MANUAL_COMMISSION
 
-    euro = context.user_data.get(
-        "manual_euro"
-    )
+    if commission > 100:
 
-    dollar = context.user_data.get(
-        "manual_dollar"
-    )
+        await update.message.reply_text(
+            "❌ کمیسیون نمی‌تواند بیشتر از 100٪ باشد."
+        )
 
-    toman = context.user_data.get(
-        "manual_toman"
-    )
+        return MANUAL_COMMISSION
+
+    euro = context.user_data.get("manual_euro")
+    dollar = context.user_data.get("manual_dollar")
+    toman = context.user_data.get("manual_toman")
 
     if not euro or not dollar or toman is None:
 
@@ -1154,9 +1089,7 @@ async def manual_commission(
 
     await update.message.reply_text(
         text,
-        reply_markup=InlineKeyboardMarkup(
-            keyboard
-        ),
+        reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
     return ConversationHandler.END
@@ -1180,12 +1113,13 @@ async def cancel(
 
 
 # =========================================================
-# اجرای ربات
+# ساخت Application
 # =========================================================
 
-def main():
+def create_application():
 
     if not BOT_TOKEN:
+
         raise RuntimeError(
             "BOT_TOKEN environment variable is not set."
         )
@@ -1228,8 +1162,7 @@ def main():
 
             CONVERT_AMOUNT: [
                 MessageHandler(
-                    filters.TEXT
-                    & ~filters.COMMAND,
+                    filters.TEXT & ~filters.COMMAND,
                     convert_amount,
                 )
             ],
@@ -1263,32 +1196,28 @@ def main():
 
             MANUAL_EURO: [
                 MessageHandler(
-                    filters.TEXT
-                    & ~filters.COMMAND,
+                    filters.TEXT & ~filters.COMMAND,
                     manual_euro,
                 )
             ],
 
             MANUAL_DOLLAR: [
                 MessageHandler(
-                    filters.TEXT
-                    & ~filters.COMMAND,
+                    filters.TEXT & ~filters.COMMAND,
                     manual_dollar,
                 )
             ],
 
             MANUAL_TOMAN: [
                 MessageHandler(
-                    filters.TEXT
-                    & ~filters.COMMAND,
+                    filters.TEXT & ~filters.COMMAND,
                     manual_toman,
                 )
             ],
 
             MANUAL_COMMISSION: [
                 MessageHandler(
-                    filters.TEXT
-                    & ~filters.COMMAND,
+                    filters.TEXT & ~filters.COMMAND,
                     manual_commission,
                 )
             ],
@@ -1337,36 +1266,5 @@ def main():
     application.add_handler(
         manual_conversation
     )
-    
-    print("======================================", flush=True)
-    print("🤖 Bot is starting...", flush=True)
-    print(f"🌐 Web server running on port {PORT}", flush=True)
-    print("======================================", flush=True)
 
-    try:
-        print(">>> BEFORE POLLING <<<", flush=True)
-
-        application.run_polling(
-            drop_pending_updates=True
-        )
-
-        print(">>> POLLING STOPPED <<<", flush=True)
-
-    except Exception as error:
-        print("======================================", flush=True)
-        print("❌ POLLING ERROR:", repr(error), flush=True)
-        print("======================================", flush=True)
-        raise
-
-# =========================================================
-# شروع
-# =========================================================
-
-if __name__ == "__main__":
-
-    threading.Thread(
-        target=run_web_server,
-        daemon=True,
-    ).start()
-
-    main()
+    return application
